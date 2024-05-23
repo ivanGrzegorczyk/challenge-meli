@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"os"
 	"time"
 
@@ -39,6 +40,14 @@ func newMongoClient() (*mongo.Client, error) {
 }
 
 func InsertRule(rule model.Rule) error {
+	if rule.Ip == "" && rule.Path == "" {
+		return errors.New("ip and path can't be empty")
+	} else if rule.Time <= 0 {
+		return errors.New("time must be greater than 0")
+	} else if rule.MaxRequests < 0 {
+		return errors.New("max_requests must be greater or equal to 0")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -51,31 +60,12 @@ func InsertRule(rule model.Rule) error {
 	return nil
 }
 
-func GetRulesByIp(ip string) ([]model.Rule, error) {
+func GetRulesByIpOrPath(ip, path string) ([]model.Rule, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	collection := mdb.Database("challenge_meli").Collection("rules")
-	cursor, err := collection.Find(ctx, bson.M{"ip": ip})
-	if err != nil {
-		return nil, err
-	}
-
-	var rules []model.Rule
-	err = cursor.All(ctx, &rules)
-	if err != nil {
-		return nil, err
-	}
-
-	return rules, nil
-}
-
-func GetRulesByPath(path string) ([]model.Rule, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	collection := mdb.Database("challenge_meli").Collection("rules")
-	cursor, err := collection.Find(ctx, bson.M{"path": path})
+	cursor, err := collection.Find(ctx, bson.M{"$or": []bson.M{{"ip": ip}, {"path": path}}})
 	if err != nil {
 		return nil, err
 	}

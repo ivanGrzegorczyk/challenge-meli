@@ -23,9 +23,9 @@ func init() {
 	})
 }
 
-func IncrementCounter(ip string) error {
+func IncrementCounter(ip string, time_seconds int) error {
 	key := fmt.Sprintf("ip:%s:%d", ip, time.Now().UnixMicro())
-	err := rdb.Set(key, "1", 60*time.Second).Err()
+	err := rdb.Set(key, "1", time.Duration(time_seconds)*time.Second).Err()
 	if err != nil {
 		return err
 	}
