@@ -52,7 +52,17 @@ func InsertRule(rule model.Rule) error {
 	defer cancel()
 
 	collection := mdb.Database("challenge_meli").Collection("rules")
-	_, err := collection.InsertOne(ctx, rule)
+
+	var existingRule model.Rule
+	err := collection.FindOne(ctx, bson.M{"ip": rule.Ip, "path": rule.Path}).Decode(&existingRule)
+	if err != mongo.ErrNoDocuments {
+		if err != nil {
+			return err
+		}
+		return errors.New("a rule with the same ip and path already exists")
+	}
+
+	_, err = collection.InsertOne(ctx, rule)
 	if err != nil {
 		return err
 	}

@@ -25,31 +25,52 @@ func ProxyHandler(c *gin.Context) {
 		return
 	}
 
+	status := http.StatusOK
 	for _, rule := range rules {
-		if (rule.Ip == ip && rule.Path == path) || (rule.Ip == ip && rule.Path == "") || (rule.Ip == "" && rule.Path == path) {
-			count, err := database.GetCounter(ip)
-			if err != nil {
-				c.String(http.StatusInternalServerError, "Error getting counter: %s", err)
-				return
+		// Si hay alguna regla definida reviso los contadores
+		if (rule.Ip == "" && rule.Path == path) || (rule.Ip == ip && rule.Path == "") || (rule.Ip == ip && rule.Path == path) {
+			var count int
+			var err error
+
+			if rule.Ip == ip && rule.Path == path {
+				count, err = database.GetCounterForIpAndPath(ip, path)
+			} else if rule.Path == path {
+				count, err = database.GetCounterForPath(path)
+			} else if rule.Ip == ip {
+				count, err = database.GetCounterForIp(ip)
 			}
 
-			if count > rule.MaxRequests {
-				c.String(http.StatusTooManyRequests, "Too many requests")
-				return
+			if err != nil {
+				c.String(http.StatusInternalServerError, "Error getting counter: %s", err)
+				break
+			}
+
+			if count >= rule.MaxRequests {
+				status = http.StatusTooManyRequests
+				break
 			}
 		}
 	}
 
-	// TODO: Incrementar el contador para ip y path
 	for _, rule := range rules {
-		if rule.Ip == ip {
-			err = database.IncrementCounter(ip, rule.Time)
+		// Si alguna regla aplica aumento el contador, la idea es evitar escribir en la base de datos si no es necesario
+		if rule.Ip == ip || rule.Path == path {
+			err = database.IncrementCounter(ip, path, rule.Time)
 			if err != nil {
 				c.String(http.StatusInternalServerError, "Error incrementing counter: %s", err)
 				return
 			}
+			break
 		}
 	}
 
-	c.String(http.StatusOK, "OK for ip %s and path %s", ip, path)
+	switch status {
+	case http.StatusOK:
+		c.JSON(http.StatusOK, gin.H{
+			"ip":   ip,
+			"path": path,
+		})
+	case http.StatusTooManyRequests:
+		c.String(http.StatusTooManyRequests, "Too many requests")
+	}
 }

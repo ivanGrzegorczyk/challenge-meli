@@ -14,7 +14,11 @@ func AddRuleHandler(c *gin.Context) {
 		return
 	}
 
-	database.InsertRule(rule)
+	err = database.InsertRule(rule)
+	if err != nil {
+		c.String(500, "Error inserting rule: %s", err)
+		return
+	}
 
 	c.JSON(200, rule)
 }
