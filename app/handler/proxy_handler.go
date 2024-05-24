@@ -1,22 +1,17 @@
 package handler
 
 import (
-	"math/rand"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ivanGrzegorczyk/challenge_meli/database"
 )
 
-var testIPs = []string{
-	"192.168.0.1",
-	"192.168.0.2",
-	"192.168.0.3",
-}
+const BASE_URL = "https://api.mercadolibre.com"
 
 func ProxyHandler(c *gin.Context) {
-	//ip := c.ClientIP()
-	ip := testIPs[rand.Intn(len(testIPs))]
+	ip := c.ClientIP()
 	path := c.Param("path")
 
 	rules, err := database.GetRulesByIpOrPath(ip, path)
@@ -42,7 +37,7 @@ func ProxyHandler(c *gin.Context) {
 
 			if err != nil {
 				c.String(http.StatusInternalServerError, "Error getting counter: %s", err)
-				break
+				return
 			}
 
 			if count >= rule.MaxRequests {
@@ -50,6 +45,11 @@ func ProxyHandler(c *gin.Context) {
 				break
 			}
 		}
+	}
+
+	if status == http.StatusTooManyRequests {
+		c.String(status, "Too many requests")
+		return
 	}
 
 	for _, rule := range rules {
@@ -64,13 +64,15 @@ func ProxyHandler(c *gin.Context) {
 		}
 	}
 
-	switch status {
-	case http.StatusOK:
-		c.JSON(http.StatusOK, gin.H{
-			"ip":   ip,
-			"path": path,
-		})
-	case http.StatusTooManyRequests:
-		c.String(http.StatusTooManyRequests, "Too many requests")
+	url := BASE_URL + path
+	log.Println("Haciendo llamada HTTP a:", url)
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Println("Error al hacer la llamada HTTP:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al hacer la llamada HTTP"})
+		return
 	}
+	defer resp.Body.Close()
+
+	c.DataFromReader(resp.StatusCode, resp.ContentLength, resp.Header.Get("Content-Type"), resp.Body, nil)
 }
